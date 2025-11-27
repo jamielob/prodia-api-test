@@ -70,6 +70,36 @@ export default function Page() {
   const [upscaleOption, setUpscaleOption] = useState("none");
   const [mirroredImageUrl, setMirroredImageUrl] = useState("");
 
+  // Utility function to render image with current filters to canvas
+  const renderImageToCanvas = async (sourceImageUrl, includeFilters = true) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        // Apply CSS filters to canvas context if requested
+        if (includeFilters) {
+          let filter = 'none';
+          if (colorization === 'greyscale') {
+            filter = `grayscale(100%) brightness(${brightness / 50})`;
+          } else if (colorization === 'colorized') {
+            const preset = colorTypePresets[colorType];
+            filter = `grayscale(100%) sepia(100%) saturate(${preset.sat * 4}%) brightness(${(brightness / 50) * (preset.light / 50)}) hue-rotate(${selectedHue - 50}deg)`;
+          }
+          ctx.filter = filter;
+        }
+        
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas);
+      };
+      img.onerror = reject;
+      img.src = sourceImageUrl;
+    });
+  };
+  
   // Create mirrored version when image or mode changes
   const createMirroredImage = (imgUrl, cropPercent = 0) => {
     const img = new Image();
