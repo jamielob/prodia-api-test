@@ -201,7 +201,9 @@ export default function Page() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error || `Request failed (${res.status})`);
+        const errorMsg = data?.error || `Request failed (${res.status})`;
+        console.error('Generation error:', errorMsg);
+        throw new Error(errorMsg);
       }
 
       const data = await res.json();
