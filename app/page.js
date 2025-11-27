@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function Page() {
-  const [promptPrepend, setPromptPrepend] = useState("Perfectly seamless repeating pattern, for fashion print, inspired by ");
+  const [promptPrepend, setPromptPrepend] = useState("Seamless repeating pattern, for fashion print, inspired by ");
   const [prompt, setPrompt] = useState("dancing in my ditsy floral");
   const [imageUrl, setImageUrl] = useState("");
   const [loading, setLoading] = useState(false);
@@ -12,6 +12,58 @@ export default function Page() {
   const [repeatMode, setRepeatMode] = useState("mirrored");
   const [rotation, setRotation] = useState(0);
   const [colorization, setColorization] = useState("original");
+  const [selectedHue, setSelectedHue] = useState(0);
+  const [brightness, setBrightness] = useState(50);
+  const [colorType, setColorType] = useState("vibrant");
+  const [isDragging, setIsDragging] = useState(false);
+  const [colorGridRef, setColorGridRef] = useState(null);
+  
+  // Color type presets: { saturation, lightness }
+  const colorTypePresets = {
+    vibrant: { sat: 85, light: 50 },
+    pastel: { sat: 50, light: 75 },
+    neon: { sat: 100, light: 60 },
+    deep: { sat: 90, light: 35 },
+    muted: { sat: 40, light: 55 },
+    bright: { sat: 100, light: 55 }
+  };
+  
+  // Handle global mouse events for dragging
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      setIsDragging(false);
+    };
+    
+    const handleGlobalMouseMove = (e) => {
+      if (!isDragging || !colorGridRef) return;
+      
+      const rect = colorGridRef.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      
+      // Calculate which column (0-36) based on x position
+      const columnWidth = rect.width / 37;
+      const column = Math.floor(x / columnWidth);
+      
+      if (column >= 0 && column < 36) {
+        // Color column
+        const hue = column * 10;
+        setColorization("colorized");
+        setSelectedHue(hue);
+      } else if (column === 36) {
+        // Greyscale column
+        setColorization("greyscale");
+      }
+    };
+    
+    if (isDragging) {
+      document.addEventListener('mouseup', handleGlobalMouseUp);
+      document.addEventListener('mousemove', handleGlobalMouseMove);
+      return () => {
+        document.removeEventListener('mouseup', handleGlobalMouseUp);
+        document.removeEventListener('mousemove', handleGlobalMouseMove);
+      };
+    }
+  }, [isDragging, colorGridRef]);
   const [crop, setCrop] = useState(0);
   const [upscaling, setUpscaling] = useState(false);
   const [isUpscaled, setIsUpscaled] = useState(false);
@@ -72,6 +124,7 @@ export default function Page() {
     };
     img.src = imgUrl;
   };
+
 
   const handleUpscale = async () => {
     if (!imageUrl || isUpscaled || upscaleOption === "none") return;
@@ -155,6 +208,16 @@ export default function Page() {
       setImageUrl(data.url);
       createMirroredImage(data.url, crop);
       setIsUpscaled(false);
+      
+      // Reset all controls to defaults
+      setColorization("original");
+      setZoom(20);
+      setRotation(0);
+      setCrop(0);
+      setRepeatMode("mirrored");
+      setBrightness(50);
+      setColorType("vibrant");
+      setSelectedHue(0);
     } catch (err) {
       setError(err?.message || "Failed to generate image.");
     } finally {
@@ -163,24 +226,22 @@ export default function Page() {
   };
 
   return (
-    <div className="flex flex-col h-screen">
-      <div className="p-4 bg-white border-b border-gray-300">
+    <div className="flex h-screen">
+      <div className="w-96 p-4 bg-white border-r border-gray-300 overflow-y-auto flex-shrink-0">
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <input
             value={promptPrepend}
             onChange={(e) => setPromptPrepend(e.target.value)}
             placeholder="Prompt prepend..."
-            className="w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-sm placeholder:text-gray-400 outline-none focus:border-gray-400"
+            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs placeholder:text-gray-400 outline-none focus:border-gray-400"
           />
-          <div className="flex items-center gap-3">
             <input
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Describe your image (e.g., a serene mountain landscape at sunset)..."
-              className="flex-1 rounded-md border border-gray-300 bg-white px-4 py-3 text-base placeholder:text-gray-400 outline-none focus:border-gray-400"
+              className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs placeholder:text-gray-400 outline-none focus:border-gray-400"
             />
             <button
-              type="submit"
               disabled={loading}
               className="rounded-md bg-black px-5 py-3 text-white transition-opacity disabled:opacity-50"
               aria-busy={loading ? "true" : "false"}
@@ -216,7 +277,6 @@ export default function Page() {
                 )}
               </>
             )}
-          </div>
         </form>
 
         {error ? (
@@ -227,11 +287,14 @@ export default function Page() {
 
         {imageUrl && (
           <div className="mt-3 flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-6">
-            <div className="flex items-center gap-3">
-              <label htmlFor="zoom" className="text-sm text-gray-700">
-                Zoom:
-              </label>
+            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <label htmlFor="zoom" className="text-sm text-gray-700">
+                  Zoom:
+                </label>
+                <span className="text-sm text-gray-600">{zoom}%</span>
+              </div>
               <input
                 id="zoom"
                 type="range"
@@ -239,14 +302,16 @@ export default function Page() {
                 max="200"
                 value={zoom}
                 onChange={(e) => setZoom(Number(e.target.value))}
-                className="w-48"
+                className="w-full"
               />
-              <span className="text-sm text-gray-600 w-12">{zoom}%</span>
             </div>
-            <div className="flex items-center gap-3">
-              <label htmlFor="rotation" className="text-sm text-gray-700">
-                Rotation:
-              </label>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <label htmlFor="rotation" className="text-sm text-gray-700">
+                  Rotation:
+                </label>
+                <span className="text-sm text-gray-600">{rotation}°</span>
+              </div>
               <input
                 id="rotation"
                 type="range"
@@ -254,14 +319,16 @@ export default function Page() {
                 max="360"
                 value={rotation}
                 onChange={(e) => setRotation(Number(e.target.value))}
-                className="w-48"
+                className="w-full"
               />
-              <span className="text-sm text-gray-600 w-12">{rotation}°</span>
             </div>
-            <div className="flex items-center gap-3">
-              <label htmlFor="crop" className="text-sm text-gray-700">
-                Crop:
-              </label>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center justify-between">
+                <label htmlFor="crop" className="text-sm text-gray-700">
+                  Crop:
+                </label>
+                <span className="text-sm text-gray-600">{crop}%</span>
+              </div>
               <input
                 id="crop"
                 type="range"
@@ -273,11 +340,10 @@ export default function Page() {
                   setCrop(newCrop);
                   if (imageUrl) createMirroredImage(imageUrl, newCrop);
                 }}
-                className="w-48"
+                className="w-full"
               />
-              <span className="text-sm text-gray-600 w-12">{crop}%</span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-1">
               <label htmlFor="repeatMode" className="text-sm text-gray-700">
                 Repeat Mode:
               </label>
@@ -285,25 +351,124 @@ export default function Page() {
                 id="repeatMode"
                 value={repeatMode}
                 onChange={(e) => setRepeatMode(e.target.value)}
-                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-gray-400"
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-gray-400"
               >
                 <option value="standard">Standard</option>
                 <option value="mirrored">Mirrored</option>
               </select>
             </div>
-            <div className="flex items-center gap-3">
-              <label htmlFor="colorization" className="text-sm text-gray-700">
-                Color:
-              </label>
-              <select
-                id="colorization"
-                value={colorization}
-                onChange={(e) => setColorization(e.target.value)}
-                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-gray-400"
+            <div className="flex flex-col gap-2">
+              <label className="text-sm text-gray-700">Color:</label>
+              
+              {/* Original button */}
+              <button
+                type="button"
+                onClick={() => setColorization("original")}
+                className="w-full py-2 rounded cursor-pointer transition-all text-xs font-medium flex items-center justify-center mb-2"
+                style={{
+                  backgroundColor: '#fff',
+                  border: colorization === 'original' ? '1px solid #000' : '1px solid #ccc',
+                  color: '#000'
+                }}
               >
-                <option value="original">Original</option>
-                <option value="greyscale">Greyscale</option>
-              </select>
+                Original
+              </button>
+              
+              {/* Color type dropdown */}
+              <div className="flex flex-col gap-1 mb-2">
+                <label className="text-sm text-gray-700">Color Type:</label>
+                <select
+                  value={colorType}
+                  onChange={(e) => setColorType(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-gray-400"
+                >
+                  <option value="vibrant">Vibrant</option>
+                  <option value="pastel">Pastel</option>
+                  <option value="neon">Neon</option>
+                  <option value="deep">Deep</option>
+                  <option value="muted">Muted</option>
+                  <option value="bright">Bright</option>
+                </select>
+              </div>
+              
+              {/* Color grid - single row of hues */}
+              <div 
+                ref={(el) => setColorGridRef(el)}
+                className="grid select-none mb-3" 
+                style={{ gridTemplateColumns: 'repeat(37, 1fr)' }}
+                onMouseDown={() => setIsDragging(true)}
+              >
+                {/* Color columns */}
+                {Array.from({ length: 36 }, (_, i) => i * 10).map((hue) => {
+                  const isSelected = colorization === 'colorized' && selectedHue === hue;
+                  
+                  const handleColorSelect = () => {
+                    setColorization("colorized");
+                    setSelectedHue(hue);
+                  };
+                  
+                  return (
+                    <button
+                      key={hue}
+                      type="button"
+                      onClick={handleColorSelect}
+                      onMouseEnter={() => {
+                        if (isDragging) {
+                          handleColorSelect();
+                        }
+                      }}
+                      className="cursor-pointer"
+                      style={{
+                        backgroundColor: `hsl(${hue}, ${colorTypePresets[colorType].sat}%, ${colorTypePresets[colorType].light}%)`,
+                        border: isSelected ? '3px solid black' : 'none',
+                        boxShadow: 'none',
+                        margin: 0,
+                        padding: 0,
+                        aspectRatio: '1 / 4',
+                        transform: isSelected ? 'scale(1.3)' : 'scale(1)',
+                        zIndex: isSelected ? 10 : 1,
+                        position: 'relative'
+                      }}
+                    />
+                  );
+                })}
+                
+                {/* Greyscale button */}
+                <button
+                  type="button"
+                  onClick={() => setColorization("greyscale")}
+                  className="cursor-pointer"
+                  style={{
+                    backgroundColor: `hsl(0, 0%, 50%)`,
+                    border: colorization === 'greyscale' ? '3px solid black' : 'none',
+                    boxShadow: 'none',
+                    margin: 0,
+                    padding: 0,
+                    aspectRatio: '1 / 4',
+                    transform: colorization === 'greyscale' ? 'scale(1.3)' : 'scale(1)',
+                    zIndex: colorization === 'greyscale' ? 10 : 1,
+                    position: 'relative'
+                  }}
+                />
+              </div>
+              
+              {/* Brightness slider */}
+              {(colorization === 'colorized' || colorization === 'greyscale') && (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm text-gray-700">Brightness:</label>
+                    <span className="text-sm text-gray-600">{brightness}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="35"
+                    max="65"
+                    value={brightness}
+                    onChange={(e) => setBrightness(Number(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
+              )}
             </div>
           </div>
           </div>
@@ -325,7 +490,11 @@ export default function Page() {
             height: '300%',
             left: '-100%',
             top: '-100%',
-            filter: colorization === 'greyscale' ? 'grayscale(100%)' : 'none'
+            filter: colorization === 'greyscale' 
+              ? `grayscale(100%) brightness(${brightness / 50})` 
+              : colorization === 'colorized'
+                ? `grayscale(100%) sepia(100%) saturate(${colorTypePresets[colorType].sat * 4}%) brightness(${(brightness / 50) * (colorTypePresets[colorType].light / 50)}) hue-rotate(${selectedHue - 50}deg)`
+                : 'none'
           } : undefined}
         >
           {!imageUrl && (
