@@ -10,7 +10,7 @@ export default function Page() {
   const [iterating, setIterating] = useState(false);
   const [iteratePrompt, setIteratePrompt] = useState("");
   const [error, setError] = useState("");
-  const [zoom, setZoom] = useState(20);
+  const [zoom, setZoom] = useState(40);
   const [rotation, setRotation] = useState(0);
   const [colorization, setColorization] = useState("original");
   const [selectedHue, setSelectedHue] = useState(0);
@@ -369,20 +369,21 @@ export default function Page() {
       
       // Reset all controls to defaults
       setColorization("original");
-      setZoom(20);
+      setZoom(40);
       setRotation(0);
       setCrop(0);
       setBrightness(50);
       setColorType("vibrant");
       setSelectedHue(0);
+      setIteratePrompt("");
       
       // Calculate offset to show bottom row (mirrored tiles) at top
-      // At 20% zoom, the 2x2 grid tile height is approximately window.innerHeight * 0.2
+      // At 40% zoom, the 2x2 grid tile height is approximately window.innerHeight * 0.4
       // We want to offset by half the mirrored image height (one tile height)
       const img = new Image();
       img.onload = () => {
         // Mirrored image is 2x the original, so one tile is half
-        const tileHeight = (img.height * 2) * (20 / 100); // 2x for mirrored grid, 20% zoom
+        const tileHeight = (img.height * 2) * (40 / 100); // 2x for mirrored grid, 40% zoom
         setPanOffset({ x: 0, y: -tileHeight / 2 });
       };
       img.src = data.url;
