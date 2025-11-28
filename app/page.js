@@ -106,6 +106,8 @@ export default function Page() {
   const [isUpscaled, setIsUpscaled] = useState(false);
   const [mirroredImageUrl, setMirroredImageUrl] = useState("");
   const [tileSize, setTileSize] = useState({ width: 0, height: 0 });
+  const [history, setHistory] = useState([]);
+  const [currentHistoryId, setCurrentHistoryId] = useState(null);
 
   // Utility function to render image with current filters to canvas
   const renderImageToCanvas = async (sourceImageUrl, includeFilters = true) => {
@@ -136,6 +138,105 @@ export default function Page() {
       img.src = sourceImageUrl;
     });
   };
+  
+  // Generate thumbnail by manually rendering with current settings
+  const generateThumbnail = async () => {
+    if (!mirroredImageUrl) return null;
+    
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 256;
+        canvas.height = 256;
+        
+        // Calculate how the background is displayed with zoom
+        // If upscaled (4x), divide zoom by 4 to normalize thumbnail size
+        const effectiveZoom = isUpscaled ? zoom / 4 : zoom;
+        const tileSize = (img.width * effectiveZoom) / 100;
+        
+        // Save context and apply rotation around center
+        ctx.save();
+        ctx.translate(128, 128);
+        ctx.rotate((rotation * Math.PI) / 180);
+        ctx.translate(-128, -128);
+        
+        // Fill with tiled pattern like CSS background-repeat
+        // Need to tile enough to cover the rotated canvas
+        const numTilesX = Math.ceil(400 / tileSize);
+        const numTilesY = Math.ceil(400 / tileSize);
+        for (let x = -numTilesX; x <= numTilesX; x++) {
+          for (let y = -numTilesY; y <= numTilesY; y++) {
+            ctx.drawImage(img, x * tileSize, y * tileSize, tileSize, tileSize);
+          }
+        }
+        
+        ctx.restore();
+        
+        // Apply color filters in a second pass
+        const filterCanvas = document.createElement('canvas');
+        filterCanvas.width = 256;
+        filterCanvas.height = 256;
+        const filterCtx = filterCanvas.getContext('2d');
+        
+        // Set CSS filter
+        if (colorization === 'greyscale') {
+          filterCtx.filter = `grayscale(100%) brightness(${brightness / 50})`;
+        } else if (colorization === 'colorized') {
+          const preset = colorTypePresets[colorType];
+          filterCtx.filter = `grayscale(100%) sepia(100%) saturate(${preset.sat * 4}%) brightness(${(brightness / 50) * (preset.light / 50)}) hue-rotate(${selectedHue - 50}deg)`;
+        } else {
+          filterCtx.filter = `brightness(${brightness / 50})`;
+        }
+        
+        filterCtx.drawImage(canvas, 0, 0);
+        resolve(filterCanvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = () => resolve(null);
+      img.src = mirroredImageUrl;
+    });
+  };
+  
+  // Update current history item with latest settings and thumbnail
+  const updateCurrentHistory = async () => {
+    if (!currentHistoryId) return;
+    
+    const thumbnail = await generateThumbnail();
+    
+    setHistory(prev => prev.map(item => 
+      item.id === currentHistoryId
+        ? {
+            ...item,
+            thumbnail: thumbnail || item.thumbnail,
+            settings: {
+              zoom,
+              rotation,
+              crop,
+              colorization,
+              selectedHue,
+              brightness,
+              colorType,
+              panOffset,
+              isUpscaled
+            }
+          }
+        : item
+    ));
+  };
+  
+  // Update history whenever visual settings change (with debouncing)
+  useEffect(() => {
+    if (!currentHistoryId || !mirroredImageUrl) return;
+    
+    const timeoutId = setTimeout(() => {
+      console.log('🔄 Updating thumbnail...');
+      updateCurrentHistory();
+    }, 500); // Debounce 500ms
+    
+    return () => clearTimeout(timeoutId);
+  }, [zoom, rotation, crop, colorization, selectedHue, brightness, colorType, panOffset, mirroredImageUrl, currentHistoryId]);
   
   // Create mirrored version when image or mode changes
   const createMirroredImage = (imgUrl, cropPercent = 0) => {
@@ -300,6 +401,34 @@ export default function Page() {
       setImageUrl(data.url);
       createMirroredImage(data.url, crop);
       setIsUpscaled(false); // Allow upscaling again after iterate
+      
+      // Create new history item for iteration
+      const newId = Date.now();
+      setCurrentHistoryId(newId);
+      
+      // Get current item to build on its prompt
+      const currentItem = history.find(item => item.id === currentHistoryId);
+      const basePrompt = currentItem ? currentItem.prompt : promptPrepend + prompt;
+      
+      setHistory(prev => [{
+        id: newId,
+        imageUrl: data.url,
+        mirroredImageUrl: '', // Will be updated
+        prompt: basePrompt + ' → ' + trimmed,
+        timestamp: new Date(),
+        iterations: 0,
+        settings: {
+          zoom,
+          rotation,
+          crop,
+          colorization,
+          selectedHue,
+          brightness,
+          colorType,
+          panOffset,
+          isUpscaled: false
+        }
+      }, ...prev]);
     } catch (err) {
       setError(err?.message || "Failed to iterate image.");
     } finally {
@@ -384,7 +513,31 @@ export default function Page() {
       img.onload = () => {
         // Mirrored image is 2x the original, so one tile is half
         const tileHeight = (img.height * 2) * (40 / 100); // 2x for mirrored grid, 40% zoom
-        setPanOffset({ x: 0, y: -tileHeight / 2 });
+        const calculatedPanOffset = { x: 0, y: -tileHeight / 2 };
+        setPanOffset(calculatedPanOffset);
+        
+        // Add new history item for generation
+        const newId = Date.now();
+        setCurrentHistoryId(newId);
+        setHistory(prev => [{
+          id: newId,
+          imageUrl: data.url,
+          mirroredImageUrl: '', // Will be updated
+          prompt: fullPrompt,
+          timestamp: new Date(),
+          iterations: 0,
+          settings: {
+            zoom: 40,
+            rotation: 0,
+            crop: 0,
+            colorization: 'original',
+            selectedHue: 0,
+            brightness: 50,
+            colorType: 'vibrant',
+            panOffset: calculatedPanOffset,
+            isUpscaled: false
+          }
+        }, ...prev]);
       };
       img.src = data.url;
     } catch (err) {
@@ -659,6 +812,7 @@ export default function Page() {
 
       <div className="flex-1 w-full overflow-hidden relative">
         <div
+          id="pattern-display"
           className={[
             "absolute inset-0",
             imageUrl ? "bg-repeat" : "bg-gray-50",
@@ -699,6 +853,63 @@ export default function Page() {
             </div>
           )}
         </div>
+      </div>
+      
+      {/* History Sidebar */}
+      <div className="w-64 p-4 bg-white border-l border-gray-300 overflow-y-auto flex-shrink-0">
+        <h3 className="text-sm font-semibold text-gray-700 mb-3">Session History</h3>
+        {history.length === 0 ? (
+          <p className="text-xs text-gray-500">No designs yet</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {history.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  console.log('📜 Restoring history item:', item.id);
+                  console.log('Settings to restore:', item.settings);
+                  
+                  // Set as current history item
+                  setCurrentHistoryId(item.id);
+                  
+                  // Restore image
+                  setImageUrl(item.imageUrl);
+                  // Regenerate mirrored image from original with crop setting
+                  createMirroredImage(item.imageUrl, item.settings.crop);
+                  
+                  // Restore all settings
+                  console.log('Restoring zoom:', item.settings.zoom);
+                  setZoom(item.settings.zoom);
+                  console.log('Restoring rotation:', item.settings.rotation);
+                  setRotation(item.settings.rotation);
+                  setCrop(item.settings.crop);
+                  setColorization(item.settings.colorization);
+                  setSelectedHue(item.settings.selectedHue);
+                  setBrightness(item.settings.brightness);
+                  setColorType(item.settings.colorType);
+                  setPanOffset(item.settings.panOffset);
+                  setIsUpscaled(item.settings.isUpscaled || false);
+                  
+                  // Restore prompt
+                  setPrompt(item.prompt.replace(promptPrepend, '').trim());
+                }}
+                className="group relative overflow-hidden rounded-md border border-gray-200 hover:border-gray-400 transition-colors"
+              >
+                <img 
+                  src={item.thumbnail || item.mirroredImageUrl || item.imageUrl} 
+                  alt={item.prompt}
+                  className="w-full h-32 object-cover"
+                />
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
+                  <p className="text-xs text-white truncate">{item.prompt}</p>
+                  <p className="text-[10px] text-gray-300">
+                    {item.iterations > 0 ? `🔄 ${item.iterations}x` : '🎨'} {item.timestamp.toLocaleTimeString()}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
