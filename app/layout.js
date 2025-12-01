@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Prodia API Test",
-  description: "Generate images using Prodia Flux Fast Schnell",
+  title: "Storyd Pattern Generator",
+  description: "AI-powered seamless pattern creator for fashion and textile prints",
 };
 
 export default function RootLayout({ children }) {
